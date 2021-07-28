@@ -1,20 +1,23 @@
 use bevy::prelude::*;
 use bevy_ecs_tilemap::prelude::*;
 
-// ANCHOR: example
-/// Used to help identify our main camera
-struct MainCamera;
+struct MousePosition {
+    x: f32,
+    y: f32,
+}
 
-fn setup(
+pub struct MainCamera;
+
+fn startup(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut map_query: MapQuery,
 ) {
     commands
-        .spawn()
-        .insert_bundle(OrthographicCameraBundle::new_2d())
+        .spawn_bundle(OrthographicCameraBundle::new_2d())
         .insert(MainCamera);
+    commands.spawn_bundle(UiCameraBundle::default());
 
     let texture_handle = asset_server.load("tiles.png");
     let material_handle = materials.add(ColorMaterial::texture(texture_handle));
@@ -69,35 +72,41 @@ fn setup(
     // Spawn Map
     // Required in order to use map_query to retrieve layers/tiles.
     commands.entity(map_entity).insert(map);
+
+    commands.spawn_bundle(TextBundle {
+        text: Text {
+            sections: vec![
+                TextSection {
+                    value: "Mouse pos: ".to_string(),
+                    style: TextStyle {
+                        font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                        font_size: 40.0,
+                        color: Color::rgb(0.5, 0.5, 1.0),
+                    },
+                },
+                TextSection {
+                    value: "".to_string(),
+                    style: TextStyle {
+                        font: asset_server.load("fonts/FiraMono-Medium.ttf"),
+                        font_size: 40.0,
+                        color: Color::rgb(1.0, 0.5, 0.5),
+                    },
+                },
+            ],
+            ..Default::default()
+        },
+        style: Style {
+            position_type: PositionType::Absolute,
+            position: Rect {
+                top: Val::Px(5.0),
+                left: Val::Px(5.0),
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+        ..Default::default()
+    });
 }
-
-fn my_cursor_system(
-    // need to get window dimensions
-    wnds: Res<Windows>,
-    // query to get camera transform
-    q_camera: Query<&Transform, With<MainCamera>>,
-) {
-    // get the primary window
-    let wnd = wnds.get_primary().unwrap();
-
-    // check if the cursor is in the primary window
-    if let Some(pos) = wnd.cursor_position() {
-        // get the size of the window
-        let size = Vec2::new(wnd.width() as f32, wnd.height() as f32);
-
-        // the default orthographic projection is in pixels from the center;
-        // just undo the translation
-        let p = (pos - size / 2.0) / 32.;
-
-        // assuming there is exactly one main camera entity, so this is OK
-        let camera_transform = q_camera.single().unwrap();
-
-        // apply the camera transform
-        let pos_wld = camera_transform.compute_matrix() * p.extend(0.0).extend(1.0);
-        eprintln!("World coords: {}/{}", pos_wld.x, pos_wld.y);
-    }
-}
-// ANCHOR_END: example
 
 fn main() {
     env_logger::Builder::from_default_env()
@@ -111,15 +120,16 @@ fn main() {
             title: String::from("Accessing tiles"),
             ..Default::default()
         })
+        .insert_resource(MousePosition { x: 0., y: 0. })
         .add_plugins(DefaultPlugins)
         .add_plugin(TilemapPlugin)
-        .add_startup_system(setup.system())
+        .add_startup_system(startup.system())
         .add_system(movement.system())
         .add_system(my_cursor_system.system())
         .run();
 }
 
-fn movement(
+pub fn movement(
     time: Res<Time>,
     keyboard_input: Res<Input<KeyCode>>,
     mut query: Query<&mut Transform, With<MainCamera>>,
@@ -159,5 +169,43 @@ fn movement(
         }
 
         transform.translation += time.delta_seconds() * direction * 500.;
+    }
+}
+
+fn my_cursor_system(
+    wnds: Res<Windows>,
+    q_camera: Query<&Transform, With<MainCamera>>,
+    buttons: Res<Input<MouseButton>>,
+    mut MousePosition: ResMut<MousePosition>,
+    mut text_query: Query<&mut Text>,
+) {
+    // get the primary window
+    let wnd = wnds.get_primary().unwrap();
+
+    // check if the cursor is in the primary window
+    if let Some(pos) = wnd.cursor_position() {
+        // get the size of the window
+        let size = Vec2::new(wnd.width() as f32, wnd.height() as f32);
+
+        // the default orthographic projection is in pixels from the center;
+        // just undo the translation
+        let p = pos - size / 2.0;
+
+        // assuming there is exactly one main camera entity, so this is OK
+        let camera_transform = q_camera.single().unwrap();
+
+        // apply the camera transform
+        let pos_wld = camera_transform.compute_matrix() * p.extend(0.0).extend(1.0);
+
+        // If the user clicks in the window, display the mouse tile position
+        if buttons.just_pressed(MouseButton::Left) {
+            MousePosition.x = pos_wld.x / 32.;
+            MousePosition.y = pos_wld.y / 32.;
+            let mut text = text_query.single_mut().unwrap();
+            text.sections[0].value = format!(
+                "Mouse pos: {}, {}",
+                MousePosition.x as i32, MousePosition.y as i32
+            );
+        }
     }
 }
