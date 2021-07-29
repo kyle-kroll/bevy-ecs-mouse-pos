@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 use bevy_ecs_tilemap::prelude::*;
+use rand::{thread_rng, Rng};
 
 struct MousePosition {
     x: f32,
@@ -14,12 +15,13 @@ fn startup(
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut map_query: MapQuery,
 ) {
+    let mut random = thread_rng();
     commands
         .spawn_bundle(OrthographicCameraBundle::new_2d())
         .insert(MainCamera);
     commands.spawn_bundle(UiCameraBundle::default());
 
-    let texture_handle = asset_server.load("tiles.png");
+    let texture_handle = asset_server.load("tile.png");
     let material_handle = materials.add(ColorMaterial::texture(texture_handle));
 
     // Create map entity and component:
@@ -30,7 +32,7 @@ fn startup(
         UVec2::new(1, 1),
         UVec2::new(5, 5),
         Vec2::new(32.0, 32.0),
-        Vec2::new(96.0, 32.0),
+        Vec2::new(256.0, 64.0),
     );
 
     // Layer 0
@@ -40,7 +42,13 @@ fn startup(
     // Required to keep track of layers for a map internally.
     map.add_layer(&mut commands, 0u16, layer_0_entity);
 
-    layer_0.set_all(TileBundle::default());
+    layer_0.set_all(TileBundle {
+        tile: Tile {
+            texture_index: random.gen_range(0..16),
+            ..Default::default()
+        },
+        ..Default::default()
+    });
 
     map_query.build_layer(&mut commands, layer_0, material_handle.clone());
 
@@ -57,7 +65,7 @@ fn startup(
         position,
         TileBundle {
             tile: Tile {
-                texture_index: 1,
+                texture_index: random.gen_range(0..16),
                 ..Default::default()
             },
             ..Default::default()
@@ -181,7 +189,10 @@ fn my_cursor_system(
     buttons: Res<Input<MouseButton>>,
     mut MousePosition: ResMut<MousePosition>,
     mut text_query: Query<&mut Text>,
+    mut map_query: MapQuery,
+    mut commands: Commands,
 ) {
+    let mut random = thread_rng();
     // get the primary window
     let wnd = wnds.get_primary().unwrap();
 
@@ -201,7 +212,7 @@ fn my_cursor_system(
         let pos_wld = camera_transform.compute_matrix() * p.extend(0.0).extend(1.0);
 
         // If the user clicks in the window, display the mouse tile position
-        if buttons.just_pressed(MouseButton::Left) {
+        if buttons.just_released(MouseButton::Left) {
             MousePosition.x = pos_wld.x / 32.;
             MousePosition.y = pos_wld.y / 32.;
             let mut text = text_query.single_mut().unwrap();
@@ -209,6 +220,27 @@ fn my_cursor_system(
                 "Mouse pos: {}, {}",
                 MousePosition.x as i32, MousePosition.y as i32
             );
+
+            if MousePosition.x >= 0.0
+                && MousePosition.x <= 5.0
+                && MousePosition.y >= 0.0
+                && MousePosition.y <= 5.0
+            {
+                let pos = UVec2::new(MousePosition.x as u32, MousePosition.y as u32);
+                map_query
+                    .set_tile(
+                        &mut commands,
+                        pos,
+                        Tile {
+                            texture_index: random.gen_range(0..16),
+                            ..Default::default()
+                        },
+                        0u16,
+                        0u16,
+                    )
+                    .expect("Error updating tile.");
+                map_query.notify_chunk_for_tile(pos, 0u16, 0u16);
+            }
         }
     }
 }
