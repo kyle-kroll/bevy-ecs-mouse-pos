@@ -71,7 +71,10 @@ fn startup(
 
     // Spawn Map
     // Required in order to use map_query to retrieve layers/tiles.
-    commands.entity(map_entity).insert(map);
+    commands
+        .entity(map_entity)
+        .insert(map)
+        .insert(GlobalTransform::default());
 
     commands.spawn_bundle(TextBundle {
         text: Text {
